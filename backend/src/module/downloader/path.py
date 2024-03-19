@@ -18,11 +18,10 @@ class TorrentPath:
         pass
 
     @staticmethod
-    def check_files(info):
+    def check_files(files_name: list[str]):
         media_list = []
         subtitle_list = []
-        for f in info.files:
-            file_name = f.name
+        for file_name in files_name:
             suffix = Path(file_name).suffix
             if suffix.lower() in [".mp4", ".mkv"]:
                 media_list.append(file_name)

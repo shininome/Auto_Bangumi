@@ -3,16 +3,16 @@ import re
 
 from module.conf import settings
 from module.downloader import DownloadClient
+from module.downloader.path import TorrentPath
 from module.models import EpisodeFile, Notification, SubtitleFile
 from module.parser import TitleParser
-from module.downloader.path import TorrentPath
 
 logger = logging.getLogger(__name__)
 
 
-class Renamer(TorrentPath):
+class Renamer:
     def __init__(self):
-        super().__init__()
+        self._path_parser = TorrentPath()
         self._parser = TitleParser()
         self._check_pool = {}
 
@@ -28,26 +28,24 @@ class Renamer(TorrentPath):
     def gen_path(
         file_info: EpisodeFile | SubtitleFile, bangumi_name: str, method: str
     ) -> str:
-        season = f"0{file_info.season}" if file_info.season < 10 else file_info.season
-        episode = (
-            f"0{file_info.episode}" if file_info.episode < 10 else file_info.episode
-        )
-        if method == "none" or method == "subtitle_none":
-            return file_info.media_path
-        elif method == "pn":
-            return f"{file_info.title} S{season}E{episode}{file_info.suffix}"
-        elif method == "advance":
-            return f"{bangumi_name} S{season}E{episode}{file_info.suffix}"
-        elif method == "normal":
+        season = f"{file_info.season:02d}"
+        episode = f"{file_info.episode:02d}"
+        method_dict = {
+            "none": file_info.media_path,
+            "subtitle_none": file_info.media_path,
+            "pn": f"{file_info.title} S{season}E{episode}{file_info.suffix}",
+            "advance": f"{bangumi_name} S{season}E{episode}{file_info.suffix}",
+            "normal": file_info.media_path,
+        } 
+        # TODO 这两个方法后面还是要分开,接受的参数都不一样,缺少language参数
+        if "subtitle" in method:
+            method_dict = {
+                "subtitle_pn": f"{file_info.title} S{season}E{episode}.{file_info.language}{file_info.suffix}",
+                "subtitle_advance": f"{bangumi_name} S{season}E{episode}.{file_info.language}{file_info.suffix}",
+            }
+        if method == "normal":
             logger.warning("[Renamer] Normal rename method is deprecated.")
-            return file_info.media_path
-        elif method == "subtitle_pn":
-            return f"{file_info.title} S{season}E{episode}.{file_info.language}{file_info.suffix}"
-        elif method == "subtitle_advance":
-            return f"{bangumi_name} S{season}E{episode}.{file_info.language}{file_info.suffix}"
-        else:
-            logger.error(f"[Renamer] Unknown rename method: {method}")
-            return file_info.media_path
+        return method_dict.get(method, method_dict.get("none"))
 
     async def rename_file(
         self,
@@ -149,14 +147,20 @@ class Renamer(TorrentPath):
         torrents_info = await client.get_torrent_info()
         renamed_info: list[Notification] = []
         for info in torrents_info:
-            media_list, subtitle_list = await client.check_files(info)
-            bangumi_name, season = await client._path_to_bangumi(info.save_path)
+            files_info = await client.get_torrent_files(info["hash"])
+            files_name = [
+                file["name"] for file in files_info
+            ]  # TODO: 兼容性过差,需要download提供接口后重写该部分
+            media_list, subtitle_list = self._path_parser.check_files(files_name)
+            bangumi_name, season = self._path_parser._path_to_bangumi(
+                info.get("save_path")
+            )
             kwargs = {
-                "torrent_name": info.name,
+                "torrent_name": info["name"],
                 "bangumi_name": bangumi_name,
                 "method": rename_method,
                 "season": season,
-                "_hash": info.hash,
+                "_hash": info["hash"],
                 "client": client,
             }
             # Rename single media file
@@ -179,7 +183,9 @@ class Renamer(TorrentPath):
         logger.debug("[Renamer] Rename process finished.")
         return renamed_info
 
-    async def compare_ep_version(self, torrent_name: str, torrent_hash: str, client: DownloadClient):
+    async def compare_ep_version(
+        self, torrent_name: str, torrent_hash: str, client: DownloadClient
+    ):
         if re.search(r"v\d.", torrent_name):
             pass
         else:
@@ -187,10 +193,10 @@ class Renamer(TorrentPath):
 
     @staticmethod
     async def _rename_file_internal(
-            original_path: str,
-            new_path: str,
-            _hash: str,
-            client: DownloadClient,
+        original_path: str,
+        new_path: str,
+        _hash: str,
+        client: DownloadClient,
     ) -> bool:
         if original_path != new_path:
             renamed = await client.rename_torrent_file(
@@ -205,9 +211,16 @@ class Renamer(TorrentPath):
 
 
 if __name__ == "__main__":
-    from module.conf import setup_logger
+    import asyncio
 
-    settings.log.debug_enable = True
-    setup_logger()
-    with Renamer() as renamer:
-        renamer.rename()
+    async def test():
+        from module.conf import setup_logger
+        from module.downloader import DownloadClient
+
+        settings.log.debug_enable = True
+        setup_logger()
+        async with DownloadClient() as qb:
+            renamer = Renamer()
+            await renamer.rename(qb)
+
+    asyncio.run(test())
