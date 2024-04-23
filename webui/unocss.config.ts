@@ -13,6 +13,18 @@ export default defineConfig({
     presetAttributify(),
     presetIcons({ cdn: 'https://esm.sh/' }),
   ],
+  preflights: [
+    {
+      getCSS: () => `
+        :root {
+          font-size: 4px;
+        }
+        body {
+          font-size: 4rem;
+        }
+      `,
+    },
+  ],
   theme: {
     colors: {
       primary: '#493475',
