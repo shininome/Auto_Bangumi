@@ -3,6 +3,8 @@ const { bangumi, editRule } = storeToRefs(useBangumiStore());
 const { getAll, updateRule, enableRule, openEditPopup, ruleManage } =
   useBangumiStore();
 
+const { isMobile } = useBreakpointQuery();
+
 onActivated(() => {
   getAll();
 });
@@ -19,8 +21,8 @@ definePage({
         name="bangumi"
         tag="div"
         flex="~ wrap"
-        gap-y-12px
-        gap-x-32px
+        gap="20"
+        :class="{ 'justify-center': isMobile }"
       >
         <ab-bangumi-card
           v-for="i in bangumi"

@@ -6,8 +6,62 @@ const { getAll, deleteSelected, disableSelected, enableSelected } =
 onActivated(() => {
   getAll();
 });
-definePage({
-  name: 'RSS',
+
+const RSSTableOptions = computed(() => {
+  const columns = [
+    {
+      type: 'selection',
+    },
+    {
+      title: t('rss.name'),
+      key: 'name',
+      className: 'text-h3',
+      ellipsis: {
+        tooltip: true,
+      },
+    },
+    {
+      title: t('rss.url'),
+      key: 'url',
+      className: 'text-h3',
+      minWidth: 400,
+      align: 'center',
+      ellipsis: {
+        tooltip: true,
+      },
+    },
+    {
+      title: t('rss.status'),
+      key: 'status',
+      className: 'text-h3',
+      align: 'right',
+      minWidth: 200,
+      render(rss: RSS) {
+        return (
+          <div flex="~ justify-end gap-x-8">
+            {rss.parser && <ab-tag type="primary" title={rss.parser} />}
+            {rss.aggregate && <ab-tag type="primary" title="aggregate" />}
+            {rss.enabled ? (
+              <ab-tag type="active" title="active" />
+            ) : (
+              <ab-tag type="inactive" title="inactive" />
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  const rowKey = (rss: RSS) => rss.id;
+
+  return {
+    columns,
+    data: rss.value,
+    pagination: false,
+    bordered: false,
+    rowKey,
+    maxHeight: 500,
+  } as unknown as InstanceType<typeof NDataTable>;
 });
 
 function addSelected(checked: boolean, id: number) {

@@ -7,9 +7,9 @@ definePage({
 </script>
 
 <template>
-  <div f-cer layout-container>
-    <ab-container :title="$t('login.title')" w-365px>
-      <div space-y-16px>
+  <div wh-screen f-cer bg-page>
+    <ab-container :title="$t('login.title')" w-365 max-w="90%">
+      <div space-y-16>
         <ab-label :label="$t('login.username')">
           <input
             v-model="user.username"

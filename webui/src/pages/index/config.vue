@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 const { getConfig, setConfig } = useConfigStore();
+const { isMobile } = useBreakpointQuery();
 
 getConfig();
 
@@ -9,10 +10,10 @@ definePage({
 </script>
 
 <template>
-  <div overflow-auto mt-12px flex-grow>
-    <div h-full flex="~ col">
-      <div grid="~ cols-2" gap-20px mb-auto>
-        <div space-y-20px>
+  <div overflow-auto mt-12 flex-grow>
+    <div h-full>
+      <div grid="~ pc:cols-2 gap-20" mb-auto>
+        <div space-y-20>
           <config-normal></config-normal>
 
           <config-parser></config-parser>
@@ -33,11 +34,21 @@ definePage({
         </div>
       </div>
 
-      <div fx-cer justify-end gap-8px mt-20px>
-        <ab-button type="warn" @click="getConfig">
+      <div fx-cer justify-end gap-8 mt-20>
+        <ab-button
+          :class="[{ 'flex-1': isMobile }]"
+          type="warn"
+          @click="getConfig"
+        >
           {{ $t('config.cancel') }}
         </ab-button>
-        <ab-button @click="setConfig">{{ $t('config.apply') }}</ab-button>
+        <ab-button
+          :class="[{ 'flex-1': isMobile }]"
+          type="primary"
+          @click="setConfig"
+        >
+          {{ $t('config.apply') }}
+        </ab-button>
       </div>
     </div>
   </div>
