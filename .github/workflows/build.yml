@@ -63,7 +63,7 @@ jobs:
 
       - name: build test
         run: |
-          cd webui && pnpm vue-tsc --noEmit
+          cd webui && pnpm test:build
 
   version-info:
     runs-on: ubuntu-latest
