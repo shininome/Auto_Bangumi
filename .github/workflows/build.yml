@@ -28,43 +28,6 @@ jobs:
           mkdir -p config
           pytest
 
-  webui-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        with:
-          version: 9
-          run_install: false
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - uses: actions/cache@v4
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: cd webui && pnpm install
-
-      - name: build test
-        run: |
-          cd webui && pnpm test:build
-
   version-info:
     runs-on: ubuntu-latest
     steps:
@@ -113,6 +76,41 @@ jobs:
       release: ${{ steps.release.outputs.release }}
       dev: ${{ steps.dev.outputs.dev }}
       version: ${{ steps.version.outputs.version }}
+
+  build-webui:
+    runs-on: ubuntu-latest
+    needs: [test, version-info]
+    if: ${{ needs.version-info.outputs.release == 1 || needs.version-info.outputs.dev == 1 }}
+    strategy:
+      matrix:
+        node-version: [18]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: webui/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: cd webui && pnpm install
+
+      - name: Build
+        run: |
+          cd webui && pnpm build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: webui/dist
 
   build-docker:
     runs-on: ubuntu-latest
