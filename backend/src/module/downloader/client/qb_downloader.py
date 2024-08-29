@@ -1,152 +1,206 @@
+import asyncio
 import logging
-import time
 
-from qbittorrentapi import Client, LoginFailed
-from qbittorrentapi.exceptions import (
-    APIConnectionError,
-    Conflict409Error,
-    Forbidden403Error,
-)
+import httpx
 
-from module.ab_decorator import qb_connect_failed_wait
+from ..exceptions import AuthorizationError
 
 logger = logging.getLogger(__name__)
+
+QB_API_URL = {
+    "add": "/api/v2/torrents/add",
+    "addTags": "/api/v2/torrents/addTags",
+    "createCategory": "/api/v2/torrents/createCategory",
+    "delete": "/api/v2/torrents/delete",
+    "getFiles": "/api/v2/torrents/files",
+    "info": "/api/v2/torrents/info",
+    "login": "/api/v2/auth/login",
+    "logout": "/api/v2/auth/logout",
+    "renameFile": "/api/v2/torrents/renameFile",
+    "setCategory": "/api/v2/torrents/setCategory",
+    "setLocation": "/api/v2/torrents/setLocation",
+    "setPreferences": "/api/v2/app/setPreferences",
+    "version": "/api/v2/app/version",
+}
 
 
 class QbDownloader:
     def __init__(self, host: str, username: str, password: str, ssl: bool):
-        self._client: Client = Client(
-            host=host,
-            username=username,
-            password=password,
-            VERIFY_WEBUI_CERTIFICATE=ssl,
-            DISABLE_LOGGING_DEBUG_OUTPUT=True,
-            REQUESTS_ARGS={"timeout": (3.1, 10)},
-        )
-        self.host = host
+        self.host = host if "://" in host else "http://" + host
         self.username = username
+        self.password = password
+        self.ssl = ssl
 
-    def auth(self, retry=3):
-        times = 0
-        while times < retry:
-            try:
-                self._client.auth_log_in()
-                return True
-            except LoginFailed:
-                logger.error(
-                    f"Can't login qBittorrent Server {self.host} by {self.username}, retry in {5} seconds."
-                )
-                time.sleep(5)
-                times += 1
-            except Forbidden403Error:
-                logger.error("Login refused by qBittorrent Server")
-                logger.info("Please release the IP in qBittorrent Server")
-                break
-            except APIConnectionError:
-                logger.error("Cannot connect to qBittorrent Server")
-                logger.info("Please check the IP and port in WebUI settings")
-                time.sleep(10)
-                times += 1
-            except Exception as e:
-                logger.error(f"Unknown error: {e}")
-                break
-        return False
+    async def auth(self):
+        resp = await self._client.post(
+            url=QB_API_URL["login"],
+            data={"username": self.username, "password": self.password},
+            timeout=5,
+        )
+        return resp.text == "Ok."
 
-    def logout(self):
-        self._client.auth_log_out()
+    async def logout(self):
+        resp = await self._client.post(url=QB_API_URL["logout"], timeout=5)
+        return resp.text
 
-    def check_host(self):
+    async def check_host(self):
         try:
-            self._client.app_version()
+            await self._client.get(url=QB_API_URL["version"], timeout=5)
             return True
-        except APIConnectionError:
+        except httpx.ConnectError or httpx.TimeoutException as e:
             return False
 
-    def check_rss(self, rss_link: str):
-        pass
+    async def prefs_init(self, prefs):
+        await self._client.post(url=QB_API_URL["setPreferences"], data=prefs)
 
-    @qb_connect_failed_wait
-    def prefs_init(self, prefs):
-        return self._client.app_set_preferences(prefs=prefs)
-
-    @qb_connect_failed_wait
-    def get_app_prefs(self):
-        return self._client.app_preferences()
-
-    def add_category(self, category):
-        return self._client.torrents_createCategory(name=category)
-
-    @qb_connect_failed_wait
-    def torrents_info(self, status_filter, category, tag=None):
-        return self._client.torrents_info(
-            status_filter=status_filter, category=category, tag=tag
+    async def add_category(self, category):
+        await self._client.post(
+            url=QB_API_URL["createCategory"],
+            data={"category": category},
+            timeout=5,
         )
 
-    def add_torrents(self, torrent_urls, torrent_files, save_path, category):
-        resp = self._client.torrents_add(
-            is_paused=False,
-            urls=torrent_urls,
-            torrent_files=torrent_files,
-            save_path=save_path,
-            category=category,
-            use_auto_torrent_management=False,
-            content_layout="NoSubFolder"
+    async def get_torrent_files(self, _hash: str) -> list[str]:
+        data = {"hash": _hash}
+        reps = await self._client.get(
+            url=QB_API_URL["getFiles"],
+            params=data,
         )
-        return resp == "Ok."
+        if "Not Found" in reps.text:
+            logging.warning(f"Cannot found {_hash}")
+            return []
+        files_name = [file["name"] for file in reps.json()]
+        return files_name
 
-    def torrents_delete(self, hash):
-        return self._client.torrents_delete(delete_files=True, torrent_hashes=hash)
-
-    def torrents_rename_file(self, torrent_hash, old_path, new_path) -> bool:
-        try:
-            self._client.torrents_rename_file(
-                torrent_hash=torrent_hash, old_path=old_path, new_path=new_path
+    async def torrents_info(self, status_filter, category, tag=None, limit=50):
+        data = {
+            "filter": status_filter,
+            "category": category,
+            "tag": tag,
+        }
+        if limit:
+            data.update({"limit": limit})
+        torrent_infos = await self._client.get(
+            url=QB_API_URL["info"],
+            params=data,
+        )
+        torrent_infos_list = []
+        for torrent_info in torrent_infos.json():
+            torrent_infos_list.append(
+                {
+                    "hash": torrent_info["hash"],
+                    "save_path": torrent_info["save_path"],
+                    "name": torrent_info["name"]
+                }
             )
-            return True
-        except Conflict409Error:
-            logger.debug(f"Conflict409Error: {old_path} >> {new_path}")
+        return torrent_infos.json()
+
+    async def add(self, torrent_urls, torrent_files, save_path, category):
+        data = {
+            "urls": torrent_urls,
+            "savepath": save_path,
+            "category": category,
+            "paused": False,
+            "autoTMM": False,
+        }
+
+        file = None
+        if torrent_files:
+            file = {"torrents": torrent_files}
+
+        resp = await self._client.post(
+            url=QB_API_URL["add"],
+            data=data,
+            files=file,
+        )
+        if "fail"in resp.text.lower() :
+            logger.debug(f"[QbDownloader] A BAD TORRENT{save_path} , send torrent to download fail.{resp.text.lower()}")
             return False
+        return resp.status_code == 200
 
-    def rss_add_feed(self, url, item_path):
-        try:
-            self._client.rss_add_feed(url, item_path)
-        except Conflict409Error:
-            logger.warning(f"[Downloader] RSS feed {url} already exists")
+    async def delete(self, _hash):
+        data = {
+            "hashes": _hash,
+            "deleteFiles": True,
+        }
+        resp = await self._client.post(
+            url=QB_API_URL["delete"],
+            data=data,
+        )
+        return resp.status_code == 200
 
-    def rss_remove_item(self, item_path):
-        try:
-            self._client.rss_remove_item(item_path)
-        except Conflict409Error:
-            logger.warning(f"[Downloader] RSS item {item_path} does not exist")
+    async def rename(self, torrent_hash, old_path, new_path) -> bool:
+        """
+        并不返回任何东西,所以不知道结果
+        """
+        data = {
+            "hash": torrent_hash,
+            "oldPath": old_path,
+            "newPath": new_path,
+        }
+        resp = await self._client.post(
+            url=QB_API_URL["renameFile"],
+            data=data,
+        )
+        return resp.status_code == 200
 
-    def rss_get_feeds(self):
-        return self._client.rss_items()
+    async def move(self, hashes, new_location):
+        """
+        hashes: "hash1|hash2|..."
+        """
 
-    def rss_set_rule(self, rule_name, rule_def):
-        self._client.rss_set_rule(rule_name, rule_def)
+        if isinstance(hashes,list):
+            hashes = "|".join(hashes)
+        data = {
+            "hashes": hashes,
+            "location": new_location,
+        }
+        resp = await self._client.post(
+            url=QB_API_URL["setLocation"],
+            data=data,
+        )
+        return resp.status_code == 200
 
-    def move_torrent(self, hashes, new_location):
-        self._client.torrents_set_location(new_location, hashes)
+    async def set_category(self, _hash, category):
+        data = {
+            "category": category,
+            "hashes": _hash,
+        }
+        resp = await self._client.post(
+            url=QB_API_URL["setCategory"],
+            data=data,
+        )
+        return resp.status_code == 200
 
-    def get_download_rule(self):
-        return self._client.rss_rules()
+    async def add_tag(self, _hash, tag):
+        data = {
+            "hashes": _hash,
+            "tags": tag,
+        }
+        resp = await self._client.post(
+            url=QB_API_URL["addTags"],
+            data=data,
+        )
+        return resp.status_code == 200
 
-    def get_torrent_path(self, _hash):
-        return self._client.torrents_info(hashes=_hash)[0].save_path
+    async def __aenter__(self):
+        self._client = httpx.AsyncClient(
+            base_url=self.host,
+            trust_env=self.ssl,
+        )
+        while not await self.check_host():
+            logger.warning(
+                f"[Downloader] Failed to connect to {self.host}, retry in 30 seconds."
+            )
+            await asyncio.sleep(30)
+        if not await self.auth():
+            await self._client.aclose()
+            logger.error(
+                "[Downloader] Downloader authorize error. Please check your username/password."
+            )
+            raise AuthorizationError("Failed to login to qbittorrent.")
+        return self
 
-    def set_category(self, _hash, category):
-        try:
-            self._client.torrents_set_category(category, hashes=_hash)
-        except Conflict409Error:
-            logger.warning(f"[Downloader] Category {category} does not exist")
-            self.add_category(category)
-            self._client.torrents_set_category(category, hashes=_hash)
-
-    def check_connection(self):
-        return self._client.app_version()
-
-    def remove_rule(self, rule_name):
-        self._client.rss_remove_rule(rule_name)
-
-    def add_tag(self, _hash, tag):
-        self._client.torrents_add_tags(tags=tag, hashes=_hash)
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.logout()
+        await self._client.aclose()

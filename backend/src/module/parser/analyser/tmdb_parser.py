@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from module.conf import TMDB_API
 from module.network import RequestContent
-from module.utils import save_image
+from module.utils import save_image,gen_poster_path
 
 TMDB_URL = "https://api.themoviedb.org"
 
@@ -17,7 +17,7 @@ class TMDBInfo:
     season: list[dict]
     last_season: int
     year: str
-    poster_link: str = None
+    poster_link: str|None = None
 
 
 LANGUAGE = {"zh": "zh-CN", "jp": "ja-JP", "en": "en-US"}
@@ -31,17 +31,16 @@ def info_url(e, key):
     return f"{TMDB_URL}/3/tv/{e}?api_key={TMDB_API}&language={LANGUAGE[key]}"
 
 
-def is_animation(tv_id, language) -> bool:
+async def is_animation(tv_id:int, language:str, req) -> bool:
     url_info = info_url(tv_id, language)
-    with RequestContent() as req:
-        type_id = req.get_json(url_info)["genres"]
-        for type in type_id:
-            if type.get("id") == 16:
-                return True
+    type_ids = await req.get_json(url_info)
+    for type in type_ids["genres"]:
+        if type.get("id") == 16:
+            return True
     return False
 
 
-def get_season(seasons: list) -> tuple[int, str]:
+def get_season(seasons: list[dict[str, str]]) -> tuple[int, str]:
     ss = [s for s in seasons if s["air_date"] is not None and "特别" not in s["season"]]
     ss = sorted(ss, key=lambda e: e.get("air_date"), reverse=True)
     for season in ss:
@@ -56,21 +55,25 @@ def get_season(seasons: list) -> tuple[int, str]:
     return len(ss), ss[-1].get("poster_path")
 
 
-def tmdb_parser(title, language, test: bool = False) -> TMDBInfo | None:
-    with RequestContent() as req:
+async def tmdb_parser(title:str, language:str, test: bool = False) -> TMDBInfo | None:
+    async with RequestContent() as req:
         url = search_url(title)
-        contents = req.get_json(url).get("results")
+        json_contents = await req.get_json(url)
+        contents:list[dict[str,int|float|list[int|float|str]]] = json_contents.get("results", "")
+        # TODO: 还是怪怪的
         if contents.__len__() == 0:
             url = search_url(title.replace(" ", ""))
-            contents = req.get_json(url).get("results")
-        # 判断动画
+            json_contents = await req.get_json(url)
+            contents = json_contents.get("results", "")
+        # # 判断动画
         if contents:
             for content in contents:
-                id = content["id"]
-                if is_animation(id, language):
+                id:int = content["id"]
+                if await is_animation(id, language, req):
                     break
             url_info = info_url(id, language)
-            info_content = req.get_json(url_info)
+            info_content = await req.get_json(url_info)
+
             season = [
                 {
                     "season": s.get("name"),
@@ -80,19 +83,18 @@ def tmdb_parser(title, language, test: bool = False) -> TMDBInfo | None:
                 for s in info_content.get("seasons")
             ]
             last_season, poster_path = get_season(season)
+            # TODO: 什么情况会是 None?
             if poster_path is None:
-                poster_path = info_content.get("poster_path")
-            original_title = info_content.get("original_name")
-            official_title = info_content.get("name")
+                poster_path:str = info_content.get("poster_path")
+
+            original_title:str = info_content.get("original_name")
+            official_title:str = info_content.get("name")
             year_number = info_content.get("first_air_date").split("-")[0]
+            poster_link = None
             if poster_path:
-                if not test:
-                    img = req.get_content(f"https://image.tmdb.org/t/p/w780{poster_path}")
-                    poster_link = save_image(img, "jpg")
-                else:
-                    poster_link = "https://image.tmdb.org/t/p/w780" + poster_path
-            else:
-                poster_link = None
+                poster_link = f"https://image.tmdb.org/t/p/w780{poster_path}"
+                poster_link = gen_poster_path(poster_link)
+
             return TMDBInfo(
                 id,
                 official_title,
@@ -107,4 +109,7 @@ def tmdb_parser(title, language, test: bool = False) -> TMDBInfo | None:
 
 
 if __name__ == "__main__":
-    print(tmdb_parser("魔法禁书目录", "zh"))
+    import asyncio
+
+    ans = asyncio.run(tmdb_parser("蓝色监狱 (2022)", "zh"))
+    # print(ans)
