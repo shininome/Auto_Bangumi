@@ -11,7 +11,7 @@ from module.api import v1
 from module.conf import VERSION, settings, setup_logger
 from module.utils import load_image
 
-setup_logger()
+setup_logger(reset=True)
 logger = logging.getLogger(__name__)
 uvicorn_logging_config = {
     "version": 1,
@@ -42,6 +42,7 @@ app = create_app()
 
 @app.get("/posters/{path:path}", tags=["posters"])
 async def posters(path: str):
+    #FIX: windown path
     post_path = f"data/posters/{path}"
     if not os.path.exists(post_path):
         await load_image(path)

@@ -72,7 +72,7 @@ class QbDownloader:
         files_name = [file["name"] for file in reps.json()]
         return files_name
 
-    async def torrents_info(self, status_filter, category, tag=None, limit=50):
+    async def torrents_info(self, status_filter, category, tag=None, limit=0):
         data = {
             "filter": status_filter,
             "category": category,
@@ -105,13 +105,13 @@ class QbDownloader:
         }
 
         file = None
-        if torrent_files:
-            file = {"torrents": torrent_files}
+        # if torrent_files:
+        #     file = {"torrents": torrent_files}
 
         resp = await self._client.post(
             url=QB_API_URL["add"],
             data=data,
-            files=file,
+            # files=file,
         )
         if "fail"in resp.text.lower() :
             logger.debug(f"[QbDownloader] A BAD TORRENT{save_path} , send torrent to download fail.{resp.text.lower()}")
@@ -119,6 +119,9 @@ class QbDownloader:
         return resp.status_code == 200
 
     async def delete(self, _hash):
+
+        if isinstance(_hash,list):
+            _hash = "|".join(_hash)
         data = {
             "hashes": _hash,
             "deleteFiles": True,

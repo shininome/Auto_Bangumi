@@ -40,6 +40,7 @@ class RSSEngine:
         Retrieve all torrents that haven’t been renamed or downloaded.
         """
         torrents = await self._get_torrents(rss_item)
+        logging.debug( f"[RSS ENGINE] from {rss_item.url} get {len(torrents)}")
         with Database(self.engine) as database:
             new_torrents = database.torrent.check_new(torrents)
             return new_torrents
@@ -92,21 +93,26 @@ class RSSEngine:
             # From RSS Items, get all torrents
         logger.debug(f"[Engine] Start refresh {rss_item.name} RSS link {rss_item.url}")
         torrent_items = await self.rss_to_data(rss_item)
-        new_torrent_items:list[Torrent] = []
+        new_torrent_items: list[Torrent] = []
         for torrent in torrent_items:
-            bangumi_item = self.match_torrent(torrent, rss_item)
-            if bangumi_item:
+            if bangumi_item := self.match_torrent(torrent, rss_item):
                 logger.debug(f"[Engine] Add torrent {torrent.name} to client")
                 self.queue.add(torrent=torrent, bangumi=bangumi_item)
                 new_torrent_items.append(torrent)
         logging.info(
             f"[Engine] {rss_item.name}{rss_item.url} parserd succeed, found {len(torrent_items)} new torrents, add {len(new_torrent_items)} torrents"
         )
-        # with Database(self.engine) as database:
-        #     database.torrent.add_all(new_torrent_items)
         return torrent_items
 
-    async def download_bangumi(self, bangumi: Bangumi, delete: bool = False):
+    async def download_bangumi(self, bangumi: Bangumi, delete=False):
+        """subscrib
+
+        Args:
+            bangumi: [TODO:description]
+
+        Returns:
+            [TODO:return]
+        """
         # 手动写标题无Poster
         # 先抓一下poster_link, 然后save, refresh_rss
         if bangumi.poster_link is None:
@@ -118,13 +124,14 @@ class RSSEngine:
                 )
         with Database(engine) as database:
             database.bangumi.add(bangumi)
-        # 还是要想想 subscrib 是有rss的
-        await self.refresh_rss(
-            0, rss_item=RSSItem(name=bangumi.official_title,url=bangumi.rss_link)
-        )
+            rss_item = database.rss.search_url(bangumi.rss_link)
+        if not rss_item:
+            rss_item = RSSItem(name=bangumi.official_title, url=bangumi.rss_link)
+        await self.refresh_rss(0, rss_item=rss_item)
         if delete:
-            #TODO: collect
-            pass
+            with Database(engine) as database:
+                bangumi.deleted = True
+                database.bangumi.update(bangumi)
         return True
 
     async def torrents_to_data(
@@ -136,12 +143,15 @@ class RSSEngine:
         new_data = []
         tasks = []
         for torrent in torrents:
-            bangumi = RawParser().parser(raw=torrent.name)
             # 对torrents进行一个去重, 重复的raw_name就不转了
-            if bangumi and bangumi.title_raw not in [_.title_raw for _ in new_data]:
+            if (
+                bangumi := RawParser().parser(raw=torrent.name)
+            ) and bangumi.title_raw not in [_.title_raw for _ in new_data]:
                 tasks.append(
                     RSSAnalyser.official_title_parser(
-                        bangumi=bangumi, rss=rss, torrent=torrent
+                        bangumi=bangumi,
+                        rss=rss,
+                        torrent=torrent,
                     )
                 )
                 bangumi.rss_link = rss.url
@@ -152,9 +162,12 @@ class RSSEngine:
         return new_data
 
     async def torrent_to_data(self, torrent: Torrent, rss: RSSItem) -> Bangumi | None:
-        bangumi = RawParser().parser(raw=torrent.name)
-        if bangumi and bangumi.official_title != "official_title":
-            await RSSAnalyser.official_title_parser(bangumi=bangumi, rss=rss, torrent=torrent)
+        if (
+            bangumi := RawParser().parser(raw=torrent.name)
+        ) and bangumi.official_title != "official_title":
+            await RSSAnalyser.official_title_parser(
+                bangumi=bangumi, rss=rss, torrent=torrent
+            )
             bangumi.rss_link = rss.url
             return bangumi
 
@@ -201,12 +214,11 @@ class RSSEngine:
         )
 
 
-
 if __name__ == "__main__":
     t = RSSEngine()
     tb = Bangumi(
-        rss_link="https://mikanani.me/RSS/Bangumi?bangumiId=3388&subgroupid=370"
-        ,poster_link="1"
+        rss_link="https://mikanani.me/RSS/Bangumi?bangumiId=3388&subgroupid=370",
+        poster_link="1",
     )
-    ans = asyncio.run(t.download_bangumi(tb))
-    print(ans)
+    ans = asyncio.run(t.refresh_rss(1))
+    # print(ans)

@@ -79,6 +79,15 @@ def torrent_parser(
 
 
 if __name__ == "__main__":
-    base = get_path_basename("海盗战记 S01E01.zh-tw.ass")
-    lang = get_subtitle_lang(base)
+    path = "test/season 1"
+    base = torrent_parser(torrent_path=path,torrent_name="物语系列 S05E06.5.mp4")
+    file_info = EpisodeFile(title="test",season=1,episode=6.5,suffix=".mp4",media_path=".")
+    if file_info.episode.is_integer():
+        print(file_info.episode)
+        episode = f"{int(file_info.episode):02d}"
+        print(episode)
+    else:
+        episode = f"{file_info.episode:04.1f}"
+        print(episode)
 
+    # lang = get_subtitle_lang(base)
