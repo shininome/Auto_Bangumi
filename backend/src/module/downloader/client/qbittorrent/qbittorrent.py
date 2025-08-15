@@ -38,18 +38,18 @@ class Downloader(BaseDownloader):
     def __init__(self):  # , host: str, username: str, password: str, ssl: bool
         super().__init__()
         self._client: httpx.AsyncClient | None = None
-        self.config: DownloaderConfig | None = None
-        self.api_interval = 0.2
+        self.config: DownloaderConfig = get_plugin_config(
+            DownloaderConfig(), "downloader"
+        )
+        self.api_interval: float = 0.2
 
     @override
     def initialize(self) -> None:
         """初始化下载器"""
         # 加载配置
         self.config = get_plugin_config(DownloaderConfig(), "downloader")
-
-        # 初始化 HTTP 客户端
         self._client = httpx.AsyncClient(
-            base_url=self.config.host, trust_env=settings.downloader.ssl
+            base_url=self.config.host, verify=settings.downloader.ssl
         )
 
     @override
@@ -88,6 +88,8 @@ class Downloader(BaseDownloader):
         try:
             resp = await self._client.post(url=QB_API_URL["logout"], timeout=5)
             resp.raise_for_status()
+            await self._client.aclose()
+            self._client = None
             return True
         except httpx.ConnectError or httpx.TimeoutException as e:
             logger.error(f"[qbittorrent] Logout error: {e}")
@@ -381,6 +383,7 @@ class Downloader(BaseDownloader):
         if isinstance(e, httpx.HTTPStatusError):
             if e.response.status_code == 403:
                 logger.error(f"[qbittorrent] {funtion_name} need login first")
+                logger.debug(f"[qbittorrent] {funtion_name} error: {e}")
                 raise AuthorizationError(
                     function_name=funtion_name,
                     message=f"{funtion_name} requires authentication",
