@@ -4,7 +4,7 @@ import logging
 from module.conf import settings
 from module.database import Database
 from module.downloader import Client as download_client
-from module.models import EpisodeFile, Notification, SubtitleFile
+from module.models import EpisodeFile, Message, SubtitleFile
 from module.models.bangumi import Bangumi
 from module.models.torrent import Torrent
 from module.parser import TitleParser, TmdbParser
@@ -173,17 +173,17 @@ class Renamer:
         logger.debug(f"[Renamer] {ep=} ")
         if result and file_type == "media":
             # 重命名成功, 发送通知
-            notify_info = Notification(
+            notify_info = Message(
                 title=bangumi_name,
-                season=season,
-                episode=ep.episode,
+                season=str(season),
+                episode=str(ep.episode),
                 poster_path=bangumi.poster_link if bangumi else "",
             )
             await self._publish_notification_request(notify_info)
 
         return result
 
-    async def _publish_notification_request(self, notify_info: Notification) -> None:
+    async def _publish_notification_request(self, notify_info: Message) -> None:
         """发布下载开始事件
 
         Args:
@@ -248,6 +248,8 @@ class Renamer:
             return
         if bangumi is None:
             with Database() as db:
+                #NOTE: 这里会更新一下 season 和 official_title
+                # 可能是因为更新了番剧信息导致的
                 bangumi = db.torrent_to_bangumi(torrent)
                 if not bangumi:
                     bangumi = Bangumi(
