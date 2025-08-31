@@ -4,7 +4,9 @@ from typing import Any
 
 from module.models import Episode
 
-from module.parser.analyser import patterns as p
+from . import patterns as p
+
+# import patterns as p
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,10 @@ ROMAN_NUMBERS = {
 }
 
 
+# 流程
+# 最重要的是集数, 但没有的话也不是强求
+
+
 class TitleMetaParser:
     """
     原始视频标题解析器
@@ -41,6 +47,8 @@ class TitleMetaParser:
         self.raw_title: str = ""
         self.title: str = ""
         self.token: list[str] = []
+        self.episode_trusted: bool = False
+        self.season_trusted: bool = False
 
     def process_title(self) -> None:
         """预处理标题，统一格式"""
@@ -52,28 +60,42 @@ class TitleMetaParser:
             translation_table = str.maketrans("【】", "[]")
             self.title = self.title.translate(translation_table)
         self.title = self.title.strip()
+        # 末尾加一个 / 处理边界
         self.title += "/"
 
     def parser(self, title: str) -> Episode:
         self.raw_title = title
         self.title = title
         self.process_title()
+        # 从一个自己定义的字幕组文件中获取字幕组信息, 保证字幕组信息的准确性
         group = self.get_group_info()
+        year = self.get_year()
         source_info = self.get_source_info()
         resolution_info = self.get_resolution_info()
         audio_info = self.get_audio_info()
         video_info = self.get_video_info()
-        sub_language = self.get_subtitle_language()
+        # 要先拿字幕类型, 双语什么的会影响字幕语言的判断
         sub_type = self.get_subtitle_type()
+        sub_language = self.get_subtitle_language()
         _ = self.get_unuseful_info()  # 清理无用信息，但不使用结果
-        episode_info, episode_is_trusted, season_info, season_is_trusted = (
-            self.get_episode_info()
-        )
+        # 先排除 range 的集数, 再排除可信的集数, 最后才是非可信的集数
+        # 用episode = -1 来表示全集
+        episode = self.get_collection_info()
+        # 处理可信的集数和季度, collection 的季度和集数解析没有意义
+        if episode is None:
+            # 到这里就说明不是合集
+            episode = self.get_trusted_episode()
+        # 开始解析 季度的信息
 
-        if not season_info:
-            season_info, season_is_trusted = self.get_season_info()
-        episode = self.parser_episode(episode_info, episode_is_trusted)
-        season, season_raw = self.parse_season(season_info, season_is_trusted)
+        season,season_raw = self.get_trusted_season()
+        # 处理非可信的集数
+        if episode is None:
+            episode = self.get_untrusted_episode()
+
+        if not self.season_trusted:
+            season, season_raw = self.get_untrusted_season()
+
+
         # 优化 token 处理逻辑
         temp_title = self.title
         if "/[]" in temp_title:
@@ -82,6 +104,7 @@ class TitleMetaParser:
             # 暂时没有哪个组把集数放前面
             if len(parts) > 1:
                 temp_title = "[]".join(parts[:-1])
+        print(temp_title)
         self.token = re.split(r"[\[\]]", temp_title)
         (
             name_en,
@@ -94,6 +117,7 @@ class TitleMetaParser:
         source = source_info[0] if source_info else ""
         sub = sub_language
         resolution = resolution_info[0] if resolution_info else ""
+        # logger.debug(f"[meta parser] {self.raw_title} >> S{season}E{episode} {name_zh}/{name_en}/{name_jp} {sub} {sub_type} {group} {year} {resolution} {source} {audio_info} {video_info}")
 
         return Episode(
             title_en=name_en,
@@ -105,6 +129,7 @@ class TitleMetaParser:
             sub=sub,
             sub_type=sub_type,
             group=group,
+            year=year,
             resolution=resolution,
             source=source,
             audio_info=audio_info,
@@ -127,16 +152,24 @@ class TitleMetaParser:
         group_info = "&".join(group_info).strip()
         return group_info
 
-    def get_episode_info(self) -> tuple[Any, bool, Any, bool]:
-        """获取剧集和季度信息"""
-        episode_info = self.findall_sub_title(p.EPISODE_PATTERN, sym="/[]")
-        episode_is_trusted = True
-        season_info = self.findall_sub_title(p.SEASON_RE, sym="/[]")
-        season_is_trusted = True
-        if not episode_info:
-            episode_info = self.findall_sub_title(p.EPISODE_RE_UNTRUSTED)
-            episode_is_trusted = False
-        return episode_info, episode_is_trusted, season_info, season_is_trusted
+    # def get_episode_info(self) -> tuple[Any, bool, Any, bool]:
+    #     """获取剧集和季度信息"""
+    #     episode_info = self.findall_sub_title(p.EPISODE_PATTERN_TRUEST, sym="/[]")
+    #     if not episode_info:
+    #         episode_info = self.findall_sub_title(p.EPISODE_PATTERN_TRUEST_WITH_BOUNDARY, sym="/[]")
+    #     episode_is_trusted = True
+    #     season_info = self.findall_sub_title(p.SEASON_PATTERN, sym="/[]")
+    #     season_is_trusted = True
+    #     if not episode_info:
+    #         episode_info = self.findall_sub_title(p.EPISODE_RE_UNTRUSTED)
+    #         episode_is_trusted = False
+    #     return episode_info, episode_is_trusted, season_info, season_is_trusted
+
+    def get_collection_info(self):
+        collection_info = self.findall_sub_title(p.COLLECTION_PATTERN, sym="/[]")
+        if collection_info:
+            self.episode_trusted = True
+            return -1
 
     def parser_episode(self, episode_info: Any, episode_is_trusted: bool) -> int:
         un_trusted_episode_list = []
@@ -149,9 +182,7 @@ class TitleMetaParser:
             return self.episode_info_to_episode(episode_info[0])
 
         for un_trusted_episode in episode_info:
-            un_trusted_episode_list.append(
-                self.episode_info_to_episode(un_trusted_episode)
-            )
+            un_trusted_episode_list.append(self.episode_info_to_episode(un_trusted_episode))
         # 所有的集数一致
         if all(x == un_trusted_episode_list[0] for x in un_trusted_episode_list):
             return un_trusted_episode_list[0]
@@ -160,20 +191,14 @@ class TitleMetaParser:
             return un_trusted_episode_list[1]
         return un_trusted_episode_list[0]
 
-    def parse_season(
-        self, season_info: Any, season_is_trusted: bool
-    ) -> tuple[int, str]:
+    def parse_season(self, season_info: list[str], season_is_trusted: bool) -> tuple[int, str]:
         if season_info:
             season_list = [self.season_info_to_season(s) for s in season_info]
             if season_is_trusted:
                 return season_list[0], season_info[0][0]
             # 如果是非可信季度信息，返回第一个有效的季度
             else:
-                if (
-                    len(season_info[0]) == 1
-                    and season_list[0] > 1
-                    and season_list[0] < 5
-                ):
+                if len(season_info[0]) == 1 and season_list[0] > 1 and season_list[0] < 5:
                     self.findall_sub_title(p.SEASON_PATTERN_UNTRUSTED)
                     return season_list[0], season_info[0]
 
@@ -190,6 +215,45 @@ class TitleMetaParser:
                     logger.warning(f"无法解析剧集号: {episode}")
                     continue
         return 0
+
+    def get_trusted_episode(self) -> int | None:
+        """获取可信的剧集信息"""
+        episode_info = self.findall_sub_title(p.EPISODE_PATTERN_TRUEST, sym="/[]")
+        if not episode_info:
+            episode_info = self.findall_sub_title(p.EPISODE_PATTERN_TRUEST_WITH_BOUNDARY, sym="/[]")
+
+        if episode_info:
+            self.episode_trusted = True
+            return self.parser_episode(episode_info, True)
+
+    def get_untrusted_episode(self) -> int:
+        """获取不可信的剧集信息"""
+        episode_info = self.findall_sub_title(p.EPISODE_RE_UNTRUSTED)
+        if episode_info:
+            return self.parser_episode(episode_info, False)
+        return 0
+
+    def get_trusted_season(self) -> tuple[int, str]:
+        """获取可信的季度信息"""
+        season_info = self.findall_sub_title(p.SEASON_PATTERN_TRUEST, sym="/[]")
+        print(f"trusted season info: {season_info}")
+        if not season_info:
+            season_info = self.findall_sub_title(p.SEASON_PATTERN, sym="/[]")
+
+
+        if season_info:
+            self.season_trusted = True
+            return self.parse_season(season_info, True)
+            # return season_info[0][0], season
+        return 1, ""
+
+    def get_untrusted_season(self) -> tuple[int, str]:
+        """获取不可信的季度信息"""
+        season_info = re.findall(p.SEASON_PATTERN_UNTRUSTED, self.title)
+        print(f"untrusted season info: {season_info}")
+        if season_info:
+            return self.parse_season(season_info, False)
+        return 1, ""
 
     def season_info_to_season(self, season_info: Any) -> int:
         """从季度信息元组中提取季度号"""
@@ -208,22 +272,29 @@ class TitleMetaParser:
                 return ROMAN_NUMBERS[season]
         return 0
 
-    def get_season_info(self) -> tuple[Any, bool]:
-        """获取不可信的季度信息"""
-        season_info = re.findall(p.SEASON_PATTERN_UNTRUSTED, self.title)
-        is_trusted = False
-        return season_info, is_trusted
+    # def get_season_info(self) -> tuple[Any, bool]:
+    #     """获取不可信的季度信息"""
+    #     season_info = re.findall(p.SEASON_PATTERN_UNTRUSTED, self.title)
+    #     is_trusted = False
+    #     return season_info, is_trusted
+
+    def get_year(self) -> str:
+        """获取年份信息"""
+        year_info = self.findall_sub_title(p.YEAR_PATTERN)
+        if year_info:
+            # 去除多余的 () 和 []
+            return  re.sub(r"[\(\)\[\]]", "", year_info[0])
+        return ""
 
     def name_process(self) -> tuple[str, str, str]:
         """处理标题，提取英文、中文和日文名称"""
 
         # 简化 token 过滤逻辑
         max_len = min(10, len(self.token))
-        self.token = [
-            token.strip() for token in self.token[:max_len] if len(token.strip()) > 1
-        ]
+        self.token = [token.strip() for token in self.token[:max_len] if len(token.strip()) > 1]
 
         self.token = self.token[:5]
+        print(f"tokens: {self.token}")
         token_priority = [len(s) for s in self.token]
         if len(self.token) == 1:
             anime_title = self.token[0]
@@ -241,10 +312,11 @@ class TitleMetaParser:
                     token_priority[idx] -= 90
                 if re.search(r"[a-zA-Z]{3,}", token):
                     token_priority[idx] += 2
-                if re.search(r"[\u0800-\u4e00]{2,}", token):
-                    token_priority[idx] += 2
-                if re.search(r"[\u4e00-\u9fa5]{2,}", token):
-                    token_priority[idx] += 2
+                if l:=re.search(r"[\u0800-\u4e00]{2,}", token):
+                    token_priority[idx] += len(l.group(0))*2
+                if l:=re.search(r"[\u4e00-\u9fa5]{2,}", token):
+                    token_priority[idx] += len(l.group(0))*2
+            print(token_priority)
             idx = token_priority.index(max(token_priority))
             anime_title = self.token[idx]
             anime_title = anime_title.strip()
@@ -297,7 +369,7 @@ class TitleMetaParser:
 
     def get_resolution_info(self) -> list[str]:
         """获取分辨率信息"""
-        return self.findall_sub_title(p.RESOLUTION_RE)
+        return self.findall_sub_title(p.RESOLUTION_PATTERN_TRUST)
 
     def get_source_info(self) -> list[str]:
         """获取视频来源信息"""
@@ -319,6 +391,7 @@ class TitleMetaParser:
 
     def get_subtitle_language(self) -> str:
         """获取字幕信息"""
+        # TODO: 还有粤语TVT
         sub = ""
         if self.findall_sub_title(p.SUB_RE_CHS):
             sub += "简"
@@ -425,7 +498,6 @@ if __name__ == "__main__":
     # title = "[TOC] 最弱技能《果实大师》 ～关于能无限食用技能果实（吃了就会死）这件事～ 09 [1080P][AVC AAC][CHT][MP4] [复制磁连]"
     # title = "[ANi] 离开 A 级队伍的我，和从前的弟子往迷宫深处迈进 - 08 [1080P][Baha][WEB-DL][AAC AVC][CHT][MP4] [复制磁连]"
     # title = "【喵萌奶茶屋】★04月新番★[夏日重现/Summer Time Rendering][11][1080p][繁日双语][招募翻译]"
-    # title = "海盗战记 (2019) S01E01.mp4"
     # title = "somethime error"
     # print(title)
     # print(re.findall(EPISODE_PATTERN, title))
@@ -444,17 +516,19 @@ if __name__ == "__main__":
     # title =  "[Lilith-Raws] Boku no Kokoro no Yabai Yatsu - 01 [Baha][WEB-DL][1080p][AVC AAC][CHT].mp4"
     #
     # title = "【极影字幕社】★4月新番 天国大魔境 Tengoku Daimakyou 第05话 GB 720P MP4（字幕社招人内详）"
-    # title = (
-    #     "[梦蓝字幕组]New Doraemon 哆啦A梦新番[747][2023.02.25][AVC][1080P][GB_JP][MP4]"
-    # )
+    # title = ( "[梦蓝字幕组]New Doraemon 哆啦A梦新番[747][2023.02.25][AVC][1080P][GB_JP][MP4]")
     # title = "负けヒロインが多すぎる！ (JPBD Vol.1-6 Remux) 败犬女主太多了！ 败北女角太多了！ Make Heroine ga Oosugiru! Toooooo Many Losing Heroines! [复制磁连]"
     # title = "海盗战记 S01E01.SC.ass"
     # title = "[LoliHouse] 2.5次元的诱惑 / 2.5-jigen no Ririsa - 01 [WebRip 1080p HEVC-10bit AAC][简繁内封字幕].mkv"
     # title = "[桜都字幕组&7³ACG] 摇曳露营 第3季/ゆるキャン△ SEASON3/Yuru Camp S03 | 01-12+New Anime 01-03 [简繁字幕] BDrip 1080p AV1 OPUS 2.0 [复制磁连]"
     title = "[三明治摆烂组&Pre-S] 与游戏中心的少女异文化交流的故事 / Game Center Shoujo to Ibunka Kouryuu - 06.5 总集篇 - [简日内嵌][H264 1080P](检索：游乐场少女的异文化交流)"
+    title = "六四位元字幕组★重启人生的千金小姐正在攻略龙帝陛下 Yarinaoshi Reijou wa Ryuutei Heika o Kouryakuchuu★11★1920x1080★AVC AAC MP4★繁体中文"
+    title = "[DBD-Raws][岁月流逝饭菜依旧美味/Hibi wa Sugiredo Meshi Umashi][01-02TV][BOX1][1080P][BDRip][HEVC-10bit][FLAC][MKV](日々は过ぎれど饭うまし) [复制磁连]"
+    title = "海盗战记 (2019) S01E01.mp4"
     #
     #
     # print(re.findall(p.GROUP_RE, title))
+    print(p.YEAR_PATTERN.findall(title))
     res = raw_parser(title)
     print(is_point_5(title))
     for k, v in res.__dict__.items():

@@ -1,9 +1,9 @@
-from .bangumi import Bangumi, BangumiUpdate, Episode, Message
+from .bangumi import Bangumi, Episode, Message
 from .config import Config
 from .database_version import DatabaseVersion
 from .mikan import MikanInfo
 from .response import APIResponse, ResponseModel
-from .rss import RSSItem, RSSUpdate
+from .rss import RSSItem
 from .tmdb import (
     Genre,
     LastEpisodeToAir,
@@ -25,14 +25,12 @@ from .user import User, UserLogin, UserUpdate
 
 __all__ = [
     "Bangumi",
-    "BangumiUpdate",
     "Config",
     "Episode",
     "Message",
     "APIResponse",
     "ResponseModel",
     "RSSItem",
-    "RSSUpdate",
     "Torrent",
     "TorrentUpdate",
     "TorrentDownloadInfo",

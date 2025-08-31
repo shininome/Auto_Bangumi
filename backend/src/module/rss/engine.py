@@ -19,12 +19,10 @@ class BaseRefresh:
         self.url: str = ""
 
     async def _get_torrents(self) -> list[Torrent]:
+        # 拉取 rss_item 对应的 未下载掉 torrents
         async with RequestContent() as req:
             torrents = await req.get_torrents(self.url)
         logging.debug(f"[RSS ENGINE] from {self.url} get {len(torrents)}")
-        for torrent in torrents:
-            # 去掉内部的 "\n"
-            torrent.name = torrent.name.replace("\n", "")
         with Database(self.engine) as database:
             new_torrents = database.torrent.check_new(torrents)
 
@@ -42,7 +40,6 @@ class BaseRefresh:
 
 
 class RSSRefresh(BaseRefresh):
-
     def __init__(self, rss_item: RSSItem, _engine=engine):
         super().__init__(_engine)
         self.rss_item: RSSItem = rss_item
@@ -66,23 +63,15 @@ class RSSRefresh(BaseRefresh):
                         self.rss_item.aggregate,
                     )
                     if not bangumi:
-                        logger.debug(
-                            f"[RSS download_rss] No bangumi found for {raw_bangumi.title_raw}"
-                        )
-                    elif(
-                        not bangumi.deleted
-                        and self.analyser.filer_torrent(torrent, bangumi)
-                    ):
+                        logger.debug(f"[RSS download_rss] No bangumi found for {raw_bangumi.title_raw}")
+                    elif not bangumi.deleted and self.analyser.filer_torrent(torrent, bangumi):
                         ## 如果不符合过滤条件, 则跳过
                         self.download_queue.add(torrent, bangumi)
                         logger.debug(
                             f"[RSS download_rss] Find bangumi {bangumi.official_title} by torrent {torrent.name}"
                         )
 
-
-        logger.debug(
-            f"[RSS download_rss] pull {len(torrents)} torrents from {self.rss_item.url}"
-        )
+        logger.debug(f"[RSS download_rss] pull {len(torrents)} torrents from {self.rss_item.url}")
         return torrents
 
     async def find_new_bangumi(self, add_to_db: bool = True) -> list[Bangumi]:
@@ -92,43 +81,37 @@ class RSSRefresh(BaseRefresh):
         # 1. 拉取所有的 torrents
         # 2. 看看在数据库中有没有对应的 bangumi, 如果没有, 对 torrents 进行解析
         # 3. 如果有 bangumi
+        # TODO: 给魂酱加个开关, 不加入被默认过滤的动漫
         # torrents = await self.pull_rss()
 
         async with RequestContent() as req:
             torrents = await req.get_torrents(self.url)
-
         logger.debug(f"[RSS] pull {len(torrents)} torrents from {self.url}")
         new_torrents = {}
         for torrent in torrents:
+            # 这是对于非聚合的 rss, 只对第一个处理就好了
             if self.bangumi:
                 continue
             # 先从数据库中找, 如果数据库中没有, 更新一下 database
-            raw_bangumi = RawParser().parser(raw=torrent.name)
-            logger.debug(
-                f"[RSSRefresh] raw bangumi {raw_bangumi.title_raw if raw_bangumi else 'None'}"
-            )
-            if raw_bangumi:
+            raw_bangumi = RawParser().parser(raw=torrent.name,exclude_collection=True)
+            logger.debug(f"[RSSRefresh] raw bangumi {raw_bangumi.title_raw if raw_bangumi else 'None'}")
+
+            if raw_bangumi and self.analyser.filer_torrent(torrent, raw_bangumi):
                 if new_torrents.get(raw_bangumi.title_raw):
                     # 如果已经有了, 则跳过
-                    logger.debug(
-                        f"[RSSRefresh] {raw_bangumi.title_raw} already in new_torrents"
-                    )
+                    logger.debug(f"[RSSRefresh] {raw_bangumi.title_raw} already in new_torrents")
                     continue
                 else:
                     with Database(engine) as database:
                         bangumi = database.find_bangumi_by_name(
-                            raw_bangumi.title_raw,
-                            self.rss_item.url,
-                            self.rss_item.aggregate,
+                            raw_bangumi.title_raw, self.rss_item.url, self.rss_item.aggregate
                         )
                         if bangumi:
                             logger.debug(
                                 f"[RSSRefresh] Find bangumi {bangumi.official_title} by torrent {torrent.name}"
                             )
                         else:
-                            logger.debug(
-                                f"[RssRefresh] add new torrent {torrent.name} to new_torrents"
-                            )
+                            logger.debug(f"[RssRefresh] add new torrent {torrent.name} to new_torrents")
                             new_torrents[raw_bangumi.title_raw] = torrent
 
         tasks = []
@@ -140,10 +123,9 @@ class RSSRefresh(BaseRefresh):
         bangumis = await asyncio.gather(*tasks)
         for bangumi in bangumis:
             with Database(engine) as db:
-                if bangumi:
-                    logger.debug(
-                        f"[RSSRefresh] Parsed bangumi: {bangumi.official_title} add to database"
-                    )
+                # 如果没有mikan_id 和 bangumi_id 则不加入数据库
+                if bangumi and (bangumi.mikan_id or bangumi.tmdb_id):
+                    logger.debug(f"[RSSRefresh] Parsed bangumi: {bangumi.official_title} add to database")
                     db.bangumi.add(bangumi)
 
 
@@ -160,19 +142,14 @@ class BangumiRefresher(BaseRefresh):
         torrents = await self.pull_rss()
         new_torrents = []
         for torrent in torrents:
-            # Check exclude filter (if matches, reject torrent)
             if self.analyser.filer_torrent(torrent, self.bangumi):
-                # 订阅时可加入信息
-                # self.download_queue.add(torrent,self.bangumi)
                 logger.debug(
                     f"[BangumiRefresher] Add torrent {torrent.name} to download queue for bangumi {self.bangumi.official_title}"
                 )
                 # 这里是最早加入 torrent.bang
                 new_torrents.append(torrent)
 
-        logger.debug(
-            f"[BangumiRefresher] Found {len(new_torrents)} new torrents for {self.bangumi.official_title}"
-        )
+        logger.debug(f"[BangumiRefresher] Found {len(new_torrents)} new torrents for {self.bangumi.official_title}")
         return new_torrents
 
 
