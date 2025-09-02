@@ -30,6 +30,8 @@ class TemplateRenderer:
         # 1. 检查是否包含 torrent_name
         if "${torrent_name}" in template:
             torrent_name = params.get("torrent_name", "")
+            suffix = params.get("suffix", "")
+            torrent_name += suffix
             return torrent_name
 
         # 2. 替换存在的参数，忽略不存在的参数
@@ -86,7 +88,7 @@ class TemplateRenderer:
         season = getattr(file_info, "season", 1)
         episode = getattr(file_info, "episode", 0)
         params = {
-            "torrent_name": getattr(file_info, "media_path", ""),
+            "torrent_name": getattr(file_info, "torrent_name", ""),
             "official_title": bangumi_name,
             "title": getattr(file_info, "title_raw", ""),
             "season": f"{season:02d}",
@@ -96,6 +98,7 @@ class TemplateRenderer:
             "group": getattr(file_info, "group", ""),
             "resolution": getattr(file_info, "resolution", ""),
             "source": getattr(file_info, "source", ""),
+            "year": getattr(file_info, "year", ""),
         }
 
         # 对于字幕文件，添加语言参数
