@@ -7,7 +7,10 @@ ENV LANG="C.UTF-8" \
     PUID=1000 \
     PGID=1000 \
     UMASK=022 \
+    VENV_PATH="/opt/venv" \
+    PATH="$VENV_PATH/bin:$PATH"\
     PATH="/root/.local/bin:$PATH"
+
 
 WORKDIR /app
 
@@ -16,48 +19,47 @@ COPY backend/pyproject.toml backend/uv.lock ./
 
 RUN set -ex && \
     apk add --no-cache \
-        bash \
-        busybox-suid \
-        python3 \
-        python3-dev \
-        py3-aiohttp \
-        py3-bcrypt \
-        curl \
-        gcc \
-        musl-dev \
-        libffi-dev \
-        su-exec \
-        shadow \
-        tini \
-        openssl \
-        tzdata \
-        rust \
-        cargo && \
+    bash \
+    busybox-suid \
+    python3 \
+    python3-dev \
+    py3-aiohttp \
+    py3-bcrypt \
+    curl \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    su-exec \
+    shadow \
+    tini \
+    openssl \
+    tzdata \
+    rust \
+    cargo && \
     # Install uv
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     # Verify uv installation and show version
-    uv --version && \
-    # Check if lock file exists and is readable
-    ls -la uv.lock && \
     # Install dependencies using uv
-    uv sync --frozen --no-dev && \
+    python3 -m venv $VENV_PATH && \
+    # uv sync --frozen --no-dev && \
+    uv sync --frozen --no-dev --python /opt/venv/bin/python && \
     # Remove build dependencies to reduce image size
     apk del \
-        rust \
-        cargo \
-        gcc \
-        musl-dev \
-        libffi-dev \
-        python3-dev && \
+    rust \
+    cargo \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    python3-dev && \
     # Add user
     mkdir -p /home/ab && \
     addgroup -S ab -g 911 && \
     adduser -S ab -G ab -h /home/ab -s /sbin/nologin -u 911 && \
     # Clear
     rm -rf \
-        /root/.cache \
-        /root/.local \
-        /tmp/*
+    /root/.cache \
+    /root/.local \
+    /tmp/*
 
 COPY --chmod=755 backend/src/. .
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
