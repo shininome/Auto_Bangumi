@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from module.rename import Renamer, rename_config
+from module.rename import Renamer, get_rename_config
 from models import Bangumi, Torrent
 from module.utils import event_bus
 from module.utils.events import Event, EventBus, EventType
@@ -20,11 +20,11 @@ class RenameMonitor:
         self._initialized: bool = False
         # 存储活跃的重命名任务 {torrent_hash: asyncio.Task}
         self.active_rename_tasks: dict[str, asyncio.Task] = {}
-        self.enable: bool = rename_config.enable
+        self.enable: bool = get_rename_config().enable
 
     async def initialize(self) -> None:
         """初始化重命名器"""
-        self.enable = rename_config.enable
+        self.enable = get_rename_config().enable
         if not self.enable:
             logger.warning("[RenameMonitor] 重命名功能未启用")
             return

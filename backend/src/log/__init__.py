@@ -1,6 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
 from models.config import Log
 
 log_config = Log()
@@ -59,7 +60,6 @@ def setup_logger(level: int = logging.INFO, reset: bool = False):
         "httpcore",
         "hpack",
         "hpack.hpack",
-        "passlib",
         "multipart",
         "multipart.multipart",
         "python_multipart.multipart",
@@ -67,9 +67,6 @@ def setup_logger(level: int = logging.INFO, reset: bool = False):
     for logger_name in loggers_to_silence:
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.WARNING)
-
-    # 对于 bcrypt 有一个 适配的问题,就藏起来吧
-    logging.getLogger("passlib").setLevel(logging.ERROR)
 
 
 __all__ = ["LOG_PATH", "setup_logger"]

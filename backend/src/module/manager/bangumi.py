@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from module.database import Database, engine
-from module.downloader import Client as DownlondClient
+from module.downloader import get_client
 from module.manager.torrent import TorrentManager
 from models import Bangumi, Torrent
 from module.parser import MikanParser,tmdb_parser
@@ -17,11 +17,12 @@ class BangumiManager:
         self.torrent_manager: TorrentManager = TorrentManager()
 
     async def delete_rule(self, _id: int | str, file: bool = False):
+        _id = int(_id)
         with Database(engine) as db:
-            data = db.bangumi.search_id(int(_id))
+            data = db.bangumi.search_id(_id)
         if data:
             with Database(engine) as db:
-                db.bangumi.delete_one(int(_id))
+                db.bangumi.delete_one(_id)
                 # 当 bangumi 不是聚合的时候删除 rss
                 rss_item = db.bangumi_to_rss(data)
                 if rss_item and rss_item.aggregate is False and rss_item.id:
@@ -95,13 +96,12 @@ class BangumiManager:
                     if old_data.official_title != data.official_title:
                         await self.refind_poster(data)
                     # Move torrent
-                    with Database(engine) as db:
-                        torrent_list = db.find_torrent_by_bangumi(old_data)
+                    torrent_list = db.find_torrent_by_bangumi(old_data)
 
                     hash_list = [torrent.download_uid for torrent in torrent_list if torrent.download_uid]
-                    new_save_path = gen_save_path(DownlondClient.config.path, data)
+                    new_save_path = gen_save_path(get_client().config.path, data)
                     if hash_list:
-                        await DownlondClient.move_torrent(hash_list, new_save_path)
+                        await get_client().move_torrent(hash_list, new_save_path)
                     # offset 要改为 0 ,不然会重复应用 offset
                     temp_data = data.model_copy()
                     temp_data.offset = 0
@@ -139,12 +139,6 @@ class BangumiManager:
             db.bangumi.update(bangumi)
         return True
 
-    def search_all_bangumi(self):
-        with Database() as db:
-            datas = db.bangumi.search_all()
-            if not datas:
-                return []
-            return [data for data in datas if not data.deleted]
 
     def search_one(self, _id: int | str):
         with Database() as db:

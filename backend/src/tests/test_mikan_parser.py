@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from module.network.request_contents import _cache
-from module.parser.analyser.mikan_parser import MikanWebParser, chinese_to_num
+from module.parser.mikan_parser import MikanParser, chinese_to_num
 from module.utils import gen_poster_path
 
 
@@ -42,7 +42,7 @@ def poster(url: str) -> str:
 class TestMikanWebParser:
     @pytest.fixture
     def parser(self):
-        return MikanWebParser()
+        return MikanParser()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -103,7 +103,7 @@ class TestMikanWebParser:
 class TestMikanParserEdgeCase:
     @pytest.fixture
     def parser(self):
-        return MikanWebParser()
+        return MikanParser()
 
     @pytest.mark.asyncio
     async def test_no_rss_link(self, parser):

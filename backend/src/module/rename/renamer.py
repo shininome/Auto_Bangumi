@@ -4,7 +4,7 @@ import logging
 from models import Bangumi, EpisodeFile, Message, SubtitleFile, Torrent
 from models.config import BangumiManage
 from module.database import Database
-from module.downloader import Client as download_client
+from module.downloader import get_client
 from module.parser import torrent_parser
 from module.parser.meta_parser import is_point_5, is_v1
 from module.utils import (
@@ -152,7 +152,7 @@ class Renamer:
         if bangumi is None:
             # 从save_path中提取番剧名称和season
             logger.debug("[Renamer][rename_file] bangumi is None, try to extract from save_path")
-            bangumi_name, season = path_to_bangumi(save_path, download_client.config.path)
+            bangumi_name, season = path_to_bangumi(save_path, get_client().config.path)
             logger.debug(f"[Renamer][rename_file] {bangumi_name=}, {season=}")
 
             if season == 0:
@@ -177,7 +177,7 @@ class Renamer:
             return True
 
         logger.debug(f"[Renamer][rename_file] {old_path=} ->{new_path=}")
-        result = await download_client.rename_torrent_file(download_uid, old_path, new_path)
+        result = await get_client().rename_torrent_file(download_uid, old_path, new_path)
         logger.debug(f"[Renamer] {ep=} ")
         if result and file_type == "media":
             # 重命名成功, 发送通知
@@ -228,7 +228,7 @@ class Renamer:
         if not dwonload_uid:
             logger.warning(f"[Renamer] {torrent.name} has no download uid, skip")
             return False
-        save_path = gen_save_path(download_client.config.path, bangumi)
+        save_path = gen_save_path(get_client().config.path, bangumi)
         for file in files_path:
             task = self.rename_file(dwonload_uid, file, save_path, bangumi)
             logger.debug(f"[Renamer] rename_files {file} rename task added")
@@ -263,7 +263,7 @@ class Renamer:
                         season=torrent.bangumi_season,
                         rss_link=torrent.rss_link,
                     )
-        files = await download_client.get_torrent_files(torrent.download_uid)
+        files = await get_client().get_torrent_files(torrent.download_uid)
         if not files:
             logger.debug(f"[Renamer] {torrent.name} has no files, skip")
             return

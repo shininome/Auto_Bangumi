@@ -1,5 +1,5 @@
 
-from module.parser.analyser import torrent_parser
+from module.parser import torrent_parser
 
 
 def test_torrent_parser():

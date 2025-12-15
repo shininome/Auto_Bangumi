@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 
 def generate_key():
@@ -12,9 +12,6 @@ def generate_key():
 
 app_pwd_key = generate_key()
 app_pwd_algorithm = "HS256"
-
-# Hashing 密码
-app_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # 创建 JWT Token
@@ -52,9 +49,9 @@ def verify_token(token: str):
 
 
 # 密码加密&验证
-def verify_password(plain_password, hashed_password):
-    return app_pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-def get_password_hash(password):
-    return app_pwd_context.hash(password)
+def get_password_hash(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

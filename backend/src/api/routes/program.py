@@ -95,12 +95,10 @@ async def program_status():
     if not program.program_status.is_running:
         return {
             "status": False,
-            "first_run": program.program_status.first_run,
         }
     else:
         return {
             "status": True,
-            "first_run": program.program_status.first_run,
         }
 
 

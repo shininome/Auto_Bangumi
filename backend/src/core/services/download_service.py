@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import override
 
 from module.database import Database, engine
-from module.downloader import Client as client
+from module.downloader import get_client
 from module.downloader.download_queue import download_queue
 from module.utils import event_bus
 from module.utils.events import Event, EventBus, EventType, ServiceException
@@ -48,7 +48,7 @@ class DownloadService(BaseService):
     async def _download(self) -> None:
         """从队列获取并执行下载任务"""
         # 确保下载客户端已登录,没有的话就直接返回
-        if not await client.wait_for_login():
+        if not await get_client().wait_for_login():
             return
 
         queue_size = download_queue.qsize()
@@ -61,7 +61,7 @@ class DownloadService(BaseService):
 
         # 执行下载任务
         try:
-            hash_list = await client.add_torrent(torrent, bangumi)
+            hash_list = await get_client().add_torrent(torrent, bangumi)
             # 处理下载结果并发布检查事件
             if hash_list:  # 下载请求已发送，hash列表不为空
                 # 发布下载检查事件，让 DownloadCheckMonitor 验证真实hash
@@ -98,9 +98,7 @@ class DownloadService(BaseService):
     async def cleanup(self) -> None:
         """清理下载客户端"""
         try:
-            from module.downloader import Client
-
-            await Client.stop()
+            await get_client().stop()
             self._initialized: bool = False
             logger.debug("[DownloadService] 下载客户端已重启")
         except Exception as e:

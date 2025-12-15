@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 
 from module.database import Database
-from module.downloader import Client as download_client
+from module.downloader import get_client
 from models import Bangumi, Torrent
 from module.utils import event_bus
 from module.utils.events import Event, EventBus, EventType
@@ -131,7 +131,7 @@ class DownloadMonitor:
                     break
 
                 # 获取种子信息
-                info = await download_client.get_torrent_info(torrent_hash)
+                info = await get_client().get_torrent_info(torrent_hash)
                 logger.debug(f"[DownloadMonitor] 获取种子信息: {torrent.name} - {torrent_hash}")
 
                 if not info:

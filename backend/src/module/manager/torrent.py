@@ -1,7 +1,7 @@
 import logging
 
 from module.database import Database, engine
-from module.downloader import Client as DownlondClient
+from module.downloader import get_client
 from module.downloader import download_queue
 from models import Bangumi, Torrent
 from module.network import RequestContent
@@ -23,7 +23,7 @@ class TorrentManager:
             torrent_list = db.find_torrent_by_bangumi(data)
             download_ids = [torrent.download_uid for torrent in torrent_list if torrent.download_uid]
         if download_ids:
-            res = await DownlondClient.delete_torrent(download_ids)
+            res = await get_client().delete_torrent(download_ids)
             if res:
                 with Database() as database:
                     for _hash in download_ids:
@@ -36,7 +36,7 @@ class TorrentManager:
         with Database(engine) as db:
             torrent = db.torrent.search_by_url(url)
             if torrent and torrent.download_uid:
-                res = await DownlondClient.delete_torrent(torrent.download_uid)
+                res = await get_client().delete_torrent(torrent.download_uid)
             res = db.torrent.delete_by_url(url)
             return res
 

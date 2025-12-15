@@ -42,9 +42,10 @@ class Program:
             check_and_upgrade_database()
         except Exception as e:
             logger.error(f"数据库升级过程中出现异常: {e}")
-            raise 
-        # 确保默认用户存在
+            raise
+        # 确保所有表存在（create_all 会跳过已存在的表，只创建缺失的）
         with Database() as db:
+            db.create_table()
             db.user.add_default_user()
         await self.start()
 

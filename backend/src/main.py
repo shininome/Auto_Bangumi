@@ -31,42 +31,16 @@ if not get_program_config().dev_mode:
 
     @app.get("/{path:path}")
     async def serve_spa(request: Request, path: str):
-        """
-        安全的SPA静态文件服务
-        - 防止路径遍历攻击
-        - 限制只能访问dist目录下的文件
-        - 对未匹配路由返回SPA入口页面
-        """
-        # 空路径或根路径，返回SPA入口页面
-        if not path or path == "/":
-            context = {"request": request}
+        context = {"request": request}
+        if not path:
             return templates.TemplateResponse("index.html", context)
 
-        # 验证路径安全性 - 阻止路径遍历
-        if ".." in path or path.startswith("/") or "\\" in path:
-            logger.warning(f"[Static] Blocked path traversal attempt: {path}")
-            context = {"request": request}
-            return templates.TemplateResponse("index.html", context)
-
-        # 构建安全的文件路径
         dist_dir = Path("dist").resolve()
         file_path = (dist_dir / path).resolve()
 
-        # 确保解析后的路径仍在预期目录内
-        try:
-            file_path.relative_to(dist_dir)
-        except ValueError:
-            logger.warning(f"[Static] Path outside allowed directory: {path}")
-            context = {"request": request}
-            return templates.TemplateResponse("index.html", context)
-
-        # 如果文件存在且是文件，则返回
-        if file_path.exists() and file_path.is_file():
+        if file_path.is_relative_to(dist_dir) and file_path.is_file():
             return FileResponse(file_path)
-        else:
-            # 文件不存在，返回SPA入口页面（用于客户端路由）
-            context = {"request": request}
-            return templates.TemplateResponse("index.html", context)
+        return templates.TemplateResponse("index.html", context)
 
 else:
 

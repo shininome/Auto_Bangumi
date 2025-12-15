@@ -1,10 +1,11 @@
-from typing import TYPE_CHECKING, Any
 import asyncio
 import logging
+from typing import TYPE_CHECKING, Any
 
-from module.rss import RSSEngine
 from conf.config import get_program_config
+from module.downloader import get_client
 from module.rename import get_rename_config
+from module.rss import RSSEngine
 from module.utils.events import ServiceException
 
 from .base_services import BaseService
@@ -37,6 +38,10 @@ class RSSService(BaseService):
 
     async def execute(self) -> None:
         """执行RSS刷新任务"""
+        # 确保下载客户端已登录,没有的话就直接返回
+        if not await get_client().wait_for_login():
+            return
+
         if not self._engine:
             raise ServiceException("rss", "服务未初始化")
 

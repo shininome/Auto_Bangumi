@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from module.notification import PostNotification,notification_config
+from module.notification import PostNotification, get_notification_config
 from module.utils.events import Event, EventBus, EventType, event_bus
 
 logger = logging.getLogger(__name__)
@@ -17,12 +17,12 @@ class NotificationMonitor:
         self._event_bus: EventBus = event_bus
         self._notification_sender = PostNotification()
         self._running: bool = False
-        self.enable: bool = notification_config.enable
+        self.enable: bool = get_notification_config().enable
 
     async def initialize(self):
         """初始化通知监控器"""
         logger.info("[NotificationMonitor] 初始化通知监控器")
-        self.enable = notification_config.enable
+        self.enable = get_notification_config().enable
         if not self.enable:
             logger.warning("[NotificationMonitor] 通知功能未启用")
             return

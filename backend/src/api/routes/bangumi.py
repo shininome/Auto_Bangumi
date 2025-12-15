@@ -1,9 +1,9 @@
 import logging
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy.util.concurrency import asyncio
 
 from module.database import Database, engine
 from module.manager import BangumiManager
@@ -97,7 +97,7 @@ async def delete_rule(bangumi_id: str, file: bool = False):
     response_model=APIResponse,
     dependencies=[Depends(get_current_user)],
 )
-async def delete_many_rule(bangumi_id: list, file: bool = False):
+async def delete_many_rule(bangumi_id: list[int], file: bool = False):
     tasks = []
     for i in bangumi_id:
         tasks.append(BangumiManager().delete_rule(i, file))
@@ -185,29 +185,6 @@ async def refresh_poster():
     return u_response(resp)
 
 
-@router.get(
-    path="/refresh/poster/{bangumi_id}",
-    response_model=APIResponse,
-    dependencies=[Depends(get_current_user)],
-)
-async def refresh_single_poster(bangumi_id: int):
-    resp = await BangumiManager().refind_poster(bangumi_id)
-    if resp:
-        resp = ResponseModel(
-            status_code=200,
-            status=True,
-            msg_en="Refresh poster link successfully.",
-            msg_zh="刷新海报链接成功。",
-        )
-    else:
-        resp = ResponseModel(
-            status_code=406,
-            status=False,
-            msg_en=f"Can't find id {bangumi_id}",
-            msg_zh=f"无法找到 id {bangumi_id}",
-        )
-    return u_response(resp)
-
 
 @router.get("/reset/all", response_model=APIResponse, dependencies=[Depends(get_current_user)])
 async def reset_all():
@@ -224,42 +201,22 @@ async def reset_all():
 
 @router.get("/posters/{path:path}", dependencies=[Depends(get_current_user)])
 async def get_poster(path: str):
-    """
-    安全的poster图片访问端点
-    - 添加了用户鉴权
-    - 防止路径遍历攻击
-    - 限制只能访问posters目录下的文件
-    """
-    # 验证路径安全性 - 阻止路径遍历
-    if ".." in path or path.startswith("/") or "\\" in path:
-        logger.warning(f"[Poster] Blocked path traversal attempt: {path}")
+    poster_dir = (Path("data") / "posters").resolve()
+    post_path = (poster_dir / path).resolve()
+
+    if not post_path.is_relative_to(poster_dir):
         raise HTTPException(status_code=400, detail="Invalid path")
 
-    # 构建安全的文件路径
-    poster_dir = Path("data") / Path("posters")
-    post_path = poster_dir / Path(path)
-
-    # 确保解析后的路径仍在预期目录内
-    try:
-        post_path.resolve().relative_to(poster_dir.resolve())
-    except ValueError:
-        logger.warning(f"[Poster] Path outside allowed directory: {path}")
-        raise HTTPException(status_code=400, detail="Path outside allowed directory")
-
-    # 如果文件不存在，尝试下载
     if not post_path.exists():
         try:
             await load_image(path)
         except Exception as e:
             logger.warning(f"[Poster] Failed to load image {path}: {e}")
 
-    # 返回文件
-    if post_path.exists() and post_path.is_file():
+    if post_path.is_file():
         return FileResponse(
             post_path,
             media_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=86400"},  # 缓存1天
+            headers={"Cache-Control": "public, max-age=86400"},
         )
-    else:
-        logger.warning(f"[Poster] File not found: {post_path}")
-        raise HTTPException(status_code=404, detail="Poster not found")
+    raise HTTPException(status_code=404, detail="Poster not found")

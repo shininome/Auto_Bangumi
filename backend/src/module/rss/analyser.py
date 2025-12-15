@@ -5,7 +5,7 @@ import httpx
 
 from models import Bangumi, RSSItem, Torrent
 from module.exceptions import ParserError
-from module.parser import MikanParser, RawParser, parser_config, tmdb_parser
+from module.parser import MikanParser, RawParser, get_parser_config, tmdb_parser
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ async def official_title_parser(bangumi: Bangumi, parser: str, torrent: Torrent)
         except ParserError as e:
             logger.warning(f"[Parser] Mikan parser error: {e}, fallback to TMDB parser.")
     try:
-        parsered_bangumi = await tmdb_parser(bangumi.official_title, parser_config.language)
+        parsered_bangumi = await tmdb_parser(bangumi.official_title, get_parser_config().language)
     except httpx.RequestError as e:
         logger.warning(f"[Parser] TMDB parser request error {e}.")
         if bangumi.mikan_id:

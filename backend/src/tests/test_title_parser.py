@@ -5,7 +5,7 @@ from module.parser.title_parser import RawParser
 class TestTitleParser:
     def test_parse_without_openai(self):
         text = "[梦蓝字幕组]New Doraemon 哆啦A梦新番[747][2023.02.25][AVC][1080P][GB_JP][MP4]"
-        result = RawParser.parser(text)
+        result = RawParser().parser(title=text)
         assert result is not None
         assert result.group_name == "梦蓝字幕组"
         assert result.title_raw == "New Doraemon"

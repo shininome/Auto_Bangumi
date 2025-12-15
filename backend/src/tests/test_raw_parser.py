@@ -1,4 +1,4 @@
-from module.parser.analyser import TitleMetaParser, is_v1, is_point_5
+from module.parser.meta_parser import TitleMetaParser,is_v1, is_point_5
 
 
 def test_raw_parser():

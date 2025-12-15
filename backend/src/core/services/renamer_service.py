@@ -3,7 +3,8 @@ import logging
 from typing import Any
 
 from module.database import Database
-from module.rename.renamer import Renamer,rename_config
+from module.downloader import get_client
+from module.rename import Renamer, get_rename_config
 from module.utils.events import Event, EventType, event_bus
 
 from .base_services import BaseService
@@ -17,12 +18,12 @@ class RenamerService(BaseService):
     def __init__(self):
         super().__init__()
         self._renamer: Renamer = Renamer()
-        self.enable = rename_config.enable
+        self.enable = get_rename_config().enable
 
     async def _setup(self) -> None:
         """初始化重命名器"""
         self._renamer = Renamer()
-        self.enable = rename_config.enable
+        self.enable = get_rename_config().enable
 
     def get_task_config(self) -> dict[str, Any]:
         """获取重命名任务配置"""
@@ -34,6 +35,10 @@ class RenamerService(BaseService):
 
     async def execute(self) -> None:
         """执行重命名检查任务"""
+        # 确保下载客户端已登录,没有的话就直接返回
+        if not await get_client().wait_for_login():
+            return
+
         if not self._renamer:
             logger.error("[RenamerService] 重命名器未初始化")
             return

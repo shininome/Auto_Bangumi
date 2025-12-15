@@ -99,8 +99,6 @@ class RSSRefresh(BaseRefresh):
             # 这是对于非聚合的 rss, 只对第一个处理就好了
             # 先从数据库中找, 如果数据库中没有, 更新一下 database
             raw_bangumi = RawParser().parser(title=torrent.name, exclude_collection=True)
-            print(raw_bangumi)
-            exit()
             logger.debug(f"[RSSRefresh] raw bangumi {raw_bangumi.title_raw if raw_bangumi else 'None'}")
             if raw_bangumi and filter_torrent(torrent, raw_bangumi):
                 with Database(engine) as database:

@@ -8,15 +8,22 @@ from .download_queue import DownloadQueue, download_queue
 
 logger = logging.getLogger(__name__)
 
-Client: DownloadClient= DownloadClient(DownloaderConfig())  # type: ignore
+_client: DownloadClient | None = None
 
 
-def init(config: DownloaderConfig|None= None) -> bool:
+def get_client() -> DownloadClient:
+    """获取下载客户端，如果未初始化则返回默认客户端"""
+    if _client is None:
+        return DownloadClient(DownloaderConfig())
+    return _client
+
+
+def init(config: DownloaderConfig | None = None) -> bool:
     if config is None:
         config = get_config_by_key("downloader", DownloaderConfig)
-    global Client
+    global _client
     try:
-        Client = DownloadClient(config)
+        _client = DownloadClient(config)
     except Exception as e:
         logger.error(f"Failed to initialize DownloadClient: {e}")
         return False
@@ -26,6 +33,6 @@ def init(config: DownloaderConfig|None= None) -> bool:
 __all__ = [
     "DownloadClient",
     "DownloadQueue",
-    "Client",
+    "get_client",
     "download_queue",
 ]

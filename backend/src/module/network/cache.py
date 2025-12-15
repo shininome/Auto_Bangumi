@@ -32,6 +32,9 @@ async def load_image(img_path: str) -> bytes | None:
         logger.debug(f"[load_image] Image not found in cache, downloading: {img_path}")
         link = img_path.split("/")[-1]
         link = str_to_url(link)
-        img_data = await save_image(link)
-        if img_data:
+        try:
+            img_data = await save_image(link)
             return img_data
+        except Exception as e:
+            logger.warning(f"[load_image] Failed to download image {link}: {e}")
+            return None

@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from module.database import Database
-from module.downloader import Client as download_client
+from module.downloader import get_client
 from models import Bangumi, Torrent
 from module.utils import event_bus
 from module.utils.events import Event, EventBus, EventType
@@ -96,11 +96,11 @@ class DownloadCheckMonitor:
             logger.debug(f"[DownloadCheckMonitor] 检查 hash: {hash_value}")
             for _ in range(3):
                 # 尝试从下载客户端获取种子信息
-                if download_client.downloader_error:
+                if get_client().downloader_error:
                     logger.warning(f"[DownloadCheckMonitor] 下载客户端不可用，跳过检查 hash: {hash_value}")
                     break
                 try:
-                    info = await download_client.get_torrent_info(hash_value)
+                    info = await get_client().get_torrent_info(hash_value)
                     last_exception = None
                     if info:
                         logger.info(f"[DownloadCheckMonitor] 找到真实hash: {hash_value}")

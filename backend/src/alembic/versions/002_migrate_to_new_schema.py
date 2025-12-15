@@ -36,6 +36,9 @@ def upgrade() -> None:
         # 删除字段
         batch_op.drop_column("save_path")
 
+    # 清空 poster_link，迁移后重新获取
+    conn.execute(sa.text("UPDATE bangumi SET poster_link = ''"))
+
     # ========== 2. Torrent 表重建 ==========
     # 由于主键变更（id -> url），需要完全重建表
 

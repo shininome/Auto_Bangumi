@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from module.downloader import Client as DownloadClient
+from module.downloader import get_client
 
 
 class ProgramStatus:
@@ -10,7 +10,7 @@ class ProgramStatus:
 
     @staticmethod
     def check_downloader() -> bool:
-        return DownloadClient.login_success_event.is_set()
+        return get_client().login_success_event.is_set()
 
     @staticmethod
     def check_img_cache() -> bool:
