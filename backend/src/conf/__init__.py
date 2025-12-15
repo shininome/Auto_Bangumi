@@ -1,13 +1,11 @@
-import sys
 
-from .search_provider import SEARCH_CONFIG
 from version import APP_VERSION
 
-PLATFORM = sys.platform
-
+from .config import get_program_config
+from .search_provider import SEARCH_CONFIG
 
 __all__ = [
     "SEARCH_CONFIG",
-    "PLATFORM",
+    "get_program_config",
     "APP_VERSION",
 ]
