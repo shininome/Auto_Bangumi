@@ -11,22 +11,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
         with:
+          python-version: "3.11"
           enable-cache: true
-      - name: Set up Python 3.11
-        run: uv python install 3.11
+          cache-dependency-glob: "backend/uv.lock"
       - name: Install dependencies
-        working-directory: ./backend
-        run: uv sync --group dev
+        run: uv sync --locked --group dev
       - name: Test
         working-directory: ./backend/src
-        run: |
-          mkdir -p config
-          uv run pytest
+        run: uv run --frozen pytest
 
   webui-test:
     runs-on: ubuntu-latest
@@ -185,7 +185,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            estrellaxd/auto_bangumi
+            shinonomeow/auto_bangumi
             ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ needs.version-info.outputs.version }}
@@ -197,7 +197,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            estrellaxd/auto_bangumi
+            shinonomeow/auto_bangumi
             ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ needs.version-info.outputs.version }}
@@ -258,7 +258,7 @@ jobs:
           builder: ${{ steps.buildx.output.name }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: false
-          tags: estrellaxd/auto_bangumi:test
+          tags: shinonomeow/auto_bangumi:test
           cache-from: type=gha, scope=${{ github.workflow }}
           cache-to: type=gha, scope=${{ github.workflow }}
 
@@ -336,15 +336,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
 
-  telegram:
-    runs-on: ubuntu-latest
-    needs: [release]
-    steps:
-      - name: send telegram message on push
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          message: |
-            New release: ${{ needs.release.outputs.version }}
-            Link: ${{ needs.release.outputs.url }}
+  # telegram:
+  #   runs-on: ubuntu-latest
+  #   needs: [release]
+  #   steps:
+  #     - name: send telegram message on push
+  #       uses: appleboy/telegram-action@master
+  #       with:
+  #         to: ${{ secrets.TELEGRAM_TO }}
+  #         token: ${{ secrets.TELEGRAM_TOKEN }}
+  #         message: |
+  #           New release: ${{ needs.release.outputs.version }}
+  #           Link: ${{ needs.release.outputs.url }}
